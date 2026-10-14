@@ -1,4 +1,4 @@
-name: CI4 Tests
+name: CI4 Tests and Deploy
 
 on: [push, pull_request]
 
@@ -21,3 +21,43 @@ jobs:
 
       - name: Tests chalao
         run: vendor/bin/phpunit --no-coverage
+
+  deploy:
+    needs: phpunit
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code download karo
+        uses: actions/checkout@v4
+
+      - name: PHP set up karo
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: intl, mbstring
+          coverage: none
+
+      - name: Composer install (production)
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-progress
+
+      - name: SSH key set up karo
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Server pe files bhejo
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p practice-deploy"
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT" \
+            --exclude='.git/' --exclude='.github/' --exclude='tests/' --exclude='.env' \
+            ./ "$SSH_USER@$SSH_HOST:practice-deploy/"
